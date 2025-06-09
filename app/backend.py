@@ -1,15 +1,36 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from scripts.rag_pipeline import get_rag_response
+from typing import Optional
+from scripts.rag_pipeline import get_rag_response, generate_quiz, parse_quiz_text
 
 app = FastAPI()
 
-class Query(BaseModel):
-    question: str
+class QuizRequest(BaseModel):
     grade: str
     subject: str
+    chapter: Optional[str] = None
+    
+class Query(BaseModel):
+    grade: str
+    subject: str
+    question: str = ""
 
 @app.post("/ask")
 def ask(query: Query):
-    answer = get_rag_response(query.question, query.grade, query.subject)
-    return {"answer": answer}
+    try:
+        answer = get_rag_response(query.question, query.grade, query.subject)
+        return {"answer": answer}
+    except Exception as e:
+        print(f"[ERROR] Backend crashed: {e}")
+        return {"answer": f"Error: {e}"}
+
+
+@app.post("/quiz")
+def quiz_endpoint(payload: QuizRequest):
+    try:
+        raw_quiz_text = generate_quiz(subject=payload.subject, grade=payload.grade, chapter=payload.chapter)
+        structured_quiz = parse_quiz_text(raw_quiz_text)
+        return {"quiz": structured_quiz}
+    except Exception as e:
+        print(f"[ERROR] Quiz generation failed: {e}")
+        return {"quiz": f"Error: {e}"}
