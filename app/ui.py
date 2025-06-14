@@ -1,5 +1,7 @@
 import streamlit as st
-import requests
+import requests, json
+import streamlit.components.v1 as components
+
 
 st.set_page_config(page_title="NCERT Tutor", layout="centered")
 
@@ -11,8 +13,131 @@ mode = st.radio("Choose Mode:", ["QA", "Quiz"])
 
 # Grade, Subject, Chapter
 grade = st.selectbox("Select Grade:", ["11", "12"])
-subject = st.selectbox("Select Subject:", ["Physics", "Computer Science"])
-chapter = st.text_input("Enter Chapter (optional)")
+subject = st.selectbox("Select Subject:", ["Physics", "Computer"])
+
+def renaaader_markdown_with_mathjax(markdown_text: str):
+    # Escape special characters safely
+    safe_text = markdown_text.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$").replace("</script>", "<\\/script>")
+
+    html_template = f"""
+    <html>
+    <head>
+        <!-- Markdown parser -->
+        <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+
+        <!-- MathJax Config -->
+        <script>
+        window.MathJax = {{
+          tex: {{
+            inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+            displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
+            processEscapes: true
+          }},
+          svg: {{ fontCache: 'global' }}
+        }};
+        </script>
+
+        <!-- MathJax script -->
+        <script type="text/javascript" async
+            src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+        </script>
+    </head>
+    <body>
+        <div id="content" style="font-size: 16px; line-height: 1.6; padding: 10px;"></div>
+
+        <script>
+            function render() {{
+                const md = window.markdownit({{ html: true }});
+                const rawText = `{safe_text}`;
+                const htmlContent = md.render(rawText);
+                const container = document.getElementById("content");
+                container.innerHTML = htmlContent;
+
+                // Wait for MathJax to be ready
+                if (window.MathJax && window.MathJax.typesetPromise) {{
+                    MathJax.typesetPromise([container]).catch(function (err) {{
+                        console.error("MathJax typeset failed: ", err);
+                    }});
+                }}
+            }}
+
+            // Poll until markdown-it is available
+            if (window.markdownit) {{
+                render();
+            }} else {{
+                const interval = setInterval(() => {{
+                    if (window.markdownit) {{
+                        clearInterval(interval);
+                        render();
+                    }}
+                }}, 50);
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    components.html(html_template, height=600, scrolling=True)
+
+
+def render_markdown_with_mathjax(markdown_text: str):
+    # Escape the text safely using JSON (handles backslashes, quotes, etc.)
+    safe_json_text = json.dumps(markdown_text)
+
+    html_template = f"""
+    <html>
+    <head>
+        <!-- Markdown Parser -->
+        <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+
+        <!-- MathJax Configuration -->
+        <script>
+        window.MathJax = {{
+          tex: {{
+            inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+            displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
+            processEscapes: true
+          }},
+          svg: {{ fontCache: 'global' }}
+        }};
+        </script>
+
+        <!-- MathJax Script -->
+        <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    </head>
+    <body>
+        <div id="content" style="font-size: 16px; line-height: 1.6; padding: 10px;"></div>
+
+        <script>
+            function render() {{
+                const md = window.markdownit({{ html: true }});
+                const rawText = {safe_json_text};  // ✅ Safe-escaped input
+                const htmlContent = md.render(rawText);
+                const container = document.getElementById("content");
+                container.innerHTML = htmlContent;
+
+                if (window.MathJax && window.MathJax.typesetPromise) {{
+                    MathJax.typesetPromise([container]).catch(err => {{
+                        console.error("MathJax typeset failed:", err);
+                    }});
+                }}
+            }}
+
+            if (window.markdownit) {{
+                render();
+            }} else {{
+                const interval = setInterval(() => {{
+                    if (window.markdownit) {{
+                        clearInterval(interval);
+                        render();
+                    }}
+                }}, 50);
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
+    components.html(html_template, height=600, scrolling=True)
 
 # ---------------- QA MODE ---------------- #
 if mode == "QA":
@@ -21,18 +146,36 @@ if mode == "QA":
         with st.spinner("Thinking..."):
             try:
                 res = requests.post(
-                    "http://localhost:8000/qa",
+                    "http://localhost:8000/ask",
                     json={
-                        "query": question,
+                        "question": question,
                         "grade": grade,
                         "subject": subject,
-                        "chapter": chapter
                     },
                     timeout=30
                 )
                 res.raise_for_status()
-                answer = res.json().get("answer", "No answer received.")
-                st.markdown(f"**Answer:** {answer}")
+                res_data = res.json()
+                # Ensure the answer is a string
+                raw_answer = res_data.get("answer", "No answer received.")
+                answer = raw_answer.get("answer") if isinstance(raw_answer, dict) else raw_answer
+                sources = raw_answer.get("sources", [])
+                
+                st.markdown("### Answer")
+                render_markdown_with_mathjax(answer)
+
+                st.markdown("### Sources")
+                if sources:
+                    for src in sources:
+                        st.markdown(
+                            f"""
+                        - **File Name:** {src.get('filename', '')}
+                            - **Page Number:** {src.get('page number', '')}
+                            - **Relevant Content:** {src.get('page content', '')}
+                        """
+                        )
+                else:
+                    st.markdown("No sources found.")
             except Exception as e:
                 st.error("❌ Sorry, an error occurred while generating your answer.")
                 st.exception(e)
@@ -47,7 +190,6 @@ elif mode == "Quiz":
                     json={
                         "grade": grade,
                         "subject": subject,
-                        "chapter": chapter
                     },
                     timeout=60
                 )

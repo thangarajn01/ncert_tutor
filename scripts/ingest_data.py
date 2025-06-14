@@ -17,6 +17,7 @@ def load_and_split_all(data_dir="data/"):
                     grade = parts[-3].replace("grade_", "")  # e.g., '11'
                     subject = parts[-2].lower()              # e.g., 'physics'
                     chapter = os.path.splitext(file)[0].lower()  # e.g., 'chapter1'
+                    print(f"Grade: {grade}, Subject: {subject}, Chapter: {chapter}")
                 except IndexError:
                     print(f"[WARNING] Skipping improperly structured path: {file_path}")
                     continue
