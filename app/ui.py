@@ -137,7 +137,7 @@ def render_markdown_with_mathjax(markdown_text: str):
     </html>
     """
 
-    components.html(html_template, height=600, scrolling=True)
+    components.html(html_template, height=900, scrolling=True)
 
 # ---------------- QA MODE ---------------- #
 if mode == "QA":
