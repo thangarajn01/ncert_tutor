@@ -8,7 +8,7 @@ app = FastAPI()
 class QuizRequest(BaseModel):
     grade: str
     subject: str
-    chapter: Optional[str] = None
+    topic: Optional[str] = None
     
 class Query(BaseModel):
     grade: str
@@ -28,7 +28,7 @@ def ask(query: Query):
 @app.post("/quiz")
 def quiz_endpoint(payload: QuizRequest):
     try:
-        raw_quiz_text = generate_quiz(subject=payload.subject, grade=payload.grade, chapter=payload.chapter)
+        raw_quiz_text = generate_quiz(subject=payload.subject, grade=payload.grade, topic=payload.topic)
         structured_quiz = parse_quiz_text(raw_quiz_text)
         return {"quiz": structured_quiz}
     except Exception as e:

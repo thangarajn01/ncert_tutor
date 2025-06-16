@@ -10,10 +10,19 @@ from langchain.chains.retrieval import create_retrieval_chain
 from langchain_core.runnables import RunnableSequence 
 
 
-import re, pprint
+import re, pprint, os
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# print all environment variables for debugging
+print("Environment Variables:")
+for key, value in os.environ.items():
+    print(f"{key}: {value}")
+
+# Ensure the necessary environment variables are set
+if not all(key in os.environ for key in ["OPENAI_API_KEY"]):
+    raise ValueError("Missing required environment variables: OPENAI_API_KEY")
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
@@ -42,7 +51,9 @@ def get_rag_response(query: str, grade: str, subject: str):
         prompt = PromptTemplate.from_template("""
         You are a knowledgeable tutor for grade {grade} in {subject}.
         Use only the provided context to answer the question below.
-        If the context does not contain the answer, say "I don't know based on the given materials."
+        If the context does not contain the answer,
+            and if it is casual talk, respond like a teacher and guide the student towards subject.
+            or if it is a question on subject but not within the context, respond it is beyond the scope of the syllabus.
 
         Context:
         {context}
@@ -93,30 +104,72 @@ def get_rag_response(query: str, grade: str, subject: str):
 
     
 
-def generate_quiz(grade, subject, chapter=None, num_questions=5):
-    llm = ChatOpenAI(temperature=0, model='gpt-4o-mini')
+def generate_quiz(grade, subject, topic, num_questions=5):
+
+    # Setup retriever with metadata filters
+    retriever = vectorstore.as_retriever(
+        search_kwargs={
+            "k": 1,
+            "filter": {
+                "grade": grade,
+                "subject": subject.lower(),
+                "chapter": topic,
+            }
+        }
+    )
     try:
-        prompt = f"""
-        Generate {num_questions} multiple choice questions (MCQs) for grade {grade} {subject}.
+        template = PromptTemplate.from_template("""
+        Context:
+        {context}
+                                                
+        Instructions:
+        You are a knowledgeable tutor for grade {grade} in {subject}.
+        Generate {num_questions} multiple choice questions (MCQs) for grade {grade} and subject {subject} from chapter {topic}
+        using only the provided context to answer the question below.
+                                                
+        If the context does not contain the answer,
+            and if it is casual topic, do not generate any quiz and respond like a teacher and guide the student towards subject.
+            or if it is a technical topic but not within the context, do not generate any quiz and 
+            respond it is beyond the scope of the syllabus.
+
+        If context is enough to generate quiz, then generate the quiz in the following format:
         Each question should have 4 options (A to D) and indicate the correct answer as 'Answer: <option>' after each question.
-        Format:
+        Do not include any additional text or explanations, just the questions and options.
+        Use the following format for each question:      
         Q1. What is ...?
         A. ...
         B. ...
         C. ...
         D. ...
         Answer: A
-        """
-        return llm.invoke(prompt).content
+        """       )
+        prompt = template.partial(
+            num_questions=num_questions,
+            grade=grade,
+            subject=subject,
+            topic=topic
+        )
+
+        # Build RAG chain
+        combine_docs_chain = create_stuff_documents_chain(llm, prompt)
+        rag_chain: RunnableSequence = create_retrieval_chain(retriever, combine_docs_chain)
+
+        # Run the RAG chain with just `query` as input
+        query = f"Generate {num_questions} MCQs for grade {grade} and subject {subject} for topic {topic}."
+
+        result = rag_chain.invoke({"input": query})
+        print("=== RAG Chain Result ===")
+        pprint.pprint(result)
+
+        return result['answer'] if isinstance(result, dict) and "answer" in result else result
     except Exception as e:
         print(f"[ERROR] Quiz generation failed: {e}")
         return "Error generating quiz."
     
 def parse_quiz_text(raw_text: str) -> list[dict]:
-    questions = re.split(r'Q\d+:', raw_text)[1:]  # split by Q1:, Q2:, etc.
     blocks = raw_text.split("Q")[1:]  # Each block starts with "1:", "2:", ...
     parsed_quiz = []
-
+    print(f"[INFO] Found {len(blocks)} quiz blocks to parse.")
     for block in blocks:
         try:
             question_part = block.split("A.")[0].strip()

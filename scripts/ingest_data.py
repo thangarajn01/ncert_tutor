@@ -1,7 +1,8 @@
-import os
+import os, json
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
+
 
 def load_and_split_all(data_dir="data/"):
     all_docs = []
@@ -42,7 +43,7 @@ def load_and_split_all(data_dir="data/"):
 
                 except Exception as e:
                     print(f"[ERROR] Failed to process {file_path}: {e}")
-
+    
     return all_docs
 
 if __name__ == "__main__":

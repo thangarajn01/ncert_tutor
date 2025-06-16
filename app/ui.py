@@ -2,6 +2,19 @@ import streamlit as st
 import requests, json
 import streamlit.components.v1 as components
 
+from pathlib import Path
+
+TOPIC_FILE = Path("data/topics.json")
+def load_topics():
+    if TOPIC_FILE.exists():
+        with open(TOPIC_FILE, "r") as f:
+            raw = json.load(f)
+            # Convert string keys back to tuple
+            return {tuple(json.loads(k)): v for k, v in raw.items()}
+    return {}
+
+topics = load_topics()
+
 
 st.set_page_config(page_title="NCERT Tutor", layout="centered")
 
@@ -11,9 +24,12 @@ st.markdown("Ask questions or take a quiz based on your subject and grade.")
 # Mode selection
 mode = st.radio("Choose Mode:", ["QA", "Quiz"])
 
-# Grade, Subject, Chapter
+# Grade, Subject
 grade = st.selectbox("Select Grade:", ["11", "12"])
-subject = st.selectbox("Select Subject:", ["Physics", "Computer"])
+subject = st.selectbox("Select Subject:", ["physics", "computer"])
+if mode == "Quiz":
+    sub_topics = topics.get((grade, subject.lower()), [])
+    topic = st.selectbox("Select Topic:", sub_topics, index=0 if sub_topics else None)
 
 def renaaader_markdown_with_mathjax(markdown_text: str):
     # Escape special characters safely
@@ -190,14 +206,17 @@ elif mode == "Quiz":
                     json={
                         "grade": grade,
                         "subject": subject,
+                        "topic": topic if topic else None
                     },
                     timeout=60
                 )
                 res.raise_for_status()
                 quiz_data = res.json().get("quiz", [])
-
+                st.write(quiz_data)
                 if not quiz_data:
-                    st.warning("No quiz generated.")
+                    st.warning("No quiz generated. {raw_answer}")
+                    st.session_state["quiz_data"] = []
+                    st.session_state["quiz_submitted"] = True
                 else:
                     st.session_state["quiz_data"] = quiz_data
                     st.session_state["quiz_submitted"] = False
@@ -211,24 +230,25 @@ elif mode == "Quiz":
 
         st.markdown("### Quiz")
         for idx, q in enumerate(quiz_data):
-            st.markdown(f"**Q{idx+1}:** {q['question']}")
-            option_display = [
-                f"{k}. {v}" for k, v in q["options"].items()
-            ] if "options" in q and isinstance(q["options"], dict) else []
-            
-            # Let the radio widget manage its session state
-            selected_display = st.radio(
-                f"Select your answer for Q{idx+1}",
-                option_display,
-                key=f"q{idx}_answer"
-            )
+                question_text = q.get("question", "")
+                st.markdown(f"**Q{idx+1}:** {question_text}")
+                option_display = [
+                    f"{k}. {v}" for k, v in q["options"].items()
+                ] if "options" in q and isinstance(q["options"], dict) else []
+                
+                # Let the radio widget manage its session state
+                selected_display = st.radio(
+                    f"Select your answer for Q{idx+1}",
+                    option_display,
+                    key=f"q{idx}_answer"
+                )
 
-            # Extract just the letter A/B/C/D (without writing to session_state directly)
-            if selected_display:
-                selected_letter = selected_display.split(".")[0].strip().upper()
-                st.session_state[f"user_selected_{idx}"] = selected_letter
-            else:
-                st.session_state[f"user_selected_{idx}"] = None
+                # Extract just the letter A/B/C/D (without writing to session_state directly)
+                if selected_display:
+                    selected_letter = selected_display.split(".")[0].strip().upper()
+                    st.session_state[f"user_selected_{idx}"] = selected_letter
+                else:
+                    st.session_state[f"user_selected_{idx}"] = None
 
         if st.button("Submit Answers"):
             st.session_state["quiz_submitted"] = True
