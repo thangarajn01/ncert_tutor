@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict
 from scripts.rag_pipeline import get_rag_response, generate_quiz, parse_quiz_text
 
 app = FastAPI()
@@ -14,11 +14,12 @@ class Query(BaseModel):
     grade: str
     subject: str
     question: str = ""
+    history: Optional[List[Dict[str, str]]] = None
 
 @app.post("/ask")
 def ask(query: Query):
     try:
-        answer = get_rag_response(query.question, query.grade, query.subject)
+        answer = get_rag_response(query.question, query.grade, query.subject, query.history)
         return {"answer": answer}
     except Exception as e:
         print(f"[ERROR] Backend crashed: {e}")

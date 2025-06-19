@@ -28,6 +28,18 @@
     "08_strings",
     "05_getting_started_with_python"
   ],
+  "[\"12\", \"chemistry\"]": [
+    "06_haloalkanes_and_haloarenes",
+    "07_alcohols_phenols_and_ethers",
+    "09_amines",
+    "05_coordination_compounds",
+    "08_aldehydes_ketones_and_carboxylic_acids",
+    "10_biomolecules",
+    "03_chemical_kinetics",
+    "01_solutions",
+    "04_the_d_and_f_block_elements",
+    "02_electrochemistry"
+  ],
   "[\"12\", \"physics\"]": [
     "04_moving_charges_and_magnetism",
     "08_electromagnetic_waves",

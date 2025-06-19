@@ -29,7 +29,7 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 vectorstore = FAISS.load_local("vector_store", embeddings, allow_dangerous_deserialization=True)
 retriever = vectorstore.as_retriever()
 
-def get_rag_response(query: str, grade: str, subject: str):
+def get_rag_response(query: str, grade: str, subject: str, history=None):
     try:
         print(f"[QUERY] Grade: {grade}, Subject: {subject}, Question: {query}")
 
@@ -47,9 +47,21 @@ def get_rag_response(query: str, grade: str, subject: str):
         # Use updated LLM import (langchain-openai)
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
+        # Format conversation history for prompt
+        history_text = ""
+        if history:
+            for turn in history:
+                if turn["role"] == "user":
+                    history_text += f"User: {turn['content']}\n"
+                elif turn["role"] == "assistant":
+                    history_text += f"Tutor: {turn['content']}\n"
+
+
         # Define prompt with placeholders
         prompt = PromptTemplate.from_template("""
         You are a knowledgeable tutor for grade {grade} in {subject}.
+        Below is the conversation so far:
+        {history}
         Use only the provided context to answer the question below.
         If the context does not contain the answer,
             and if it is casual talk, respond like a teacher and guide the student towards subject.
@@ -63,7 +75,7 @@ def get_rag_response(query: str, grade: str, subject: str):
         """)
 
         # Fill static vars (grade, subject) at compile time
-        final_prompt = prompt.partial(grade=grade, subject=subject)
+        final_prompt = prompt.partial(grade=grade, subject=subject, history=history_text)
 
         # Build RAG chain
         combine_docs_chain = create_stuff_documents_chain(llm, final_prompt)

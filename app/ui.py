@@ -26,7 +26,7 @@ mode = st.radio("Choose Mode:", ["QA", "Quiz"])
 
 # Grade, Subject
 grade = st.selectbox("Select Grade:", ["11", "12"])
-subject = st.selectbox("Select Subject:", ["physics", "computer"])
+subject = st.selectbox("Select Subject:", ["physics", "computer", "chemistry"])
 if mode == "Quiz":
     sub_topics = topics.get((grade, subject.lower()), [])
     topic = st.selectbox("Select Topic:", sub_topics, index=0 if sub_topics else None)
@@ -157,44 +157,84 @@ def render_markdown_with_mathjax(markdown_text: str):
 
 # ---------------- QA MODE ---------------- #
 if mode == "QA":
-    question = st.text_area("Ask your question:")
-    if st.button("Get Answer"):
-        with st.spinner("Thinking..."):
+    st.markdown("### Chat with NCERT Tutor")
+
+    # Initialize chat history in session state
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    if "user_input" not in st.session_state:
+        st.session_state.user_input = ""
+
+    # Display chat history
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(f"**You:** {msg['content']}")
+        else:
+            st.markdown(f"**Tutor:** {msg['content']}")
+            # Optionally show sources if present
+            #if "sources" in msg and msg["sources"]:
+            #    st.markdown("**Sources:**")
+            #    for src in msg["sources"]:
+            #        st.markdown(
+            #            f"- **File Name:** {src.get('filename', '')}\n"
+            #            f"    - **Page Number:** {src.get('page number', '')}\n"
+            #            f"    - **Relevant Content:** {src.get('page content', '')}\n"
+            #        )
+
+    # User input for question
+    st.session_state.user_input = st.text_input("Type your question...", value=st.session_state.user_input)
+    send_clicked = st.button("Send")
+
+    if send_clicked and st.session_state.user_input.strip():
+        with st.spinner("Tutor is thinking..."):
             try:
+                user_input = st.session_state.user_input.strip()
+              
+                # Prepare conversation history for backend (excluding sources)
+                history_for_backend = [
+                    {"role": msg["role"], "content": msg["content"]}
+                    for msg in st.session_state.chat_history
+                    if msg["role"] in ("user", "assistant")
+                ]
+
                 res = requests.post(
                     "http://localhost:8000/ask",
                     json={
-                        "question": question,
+                        "question": user_input,
                         "grade": grade,
                         "subject": subject,
+                        "history": history_for_backend
                     },
                     timeout=30
                 )
                 res.raise_for_status()
                 res_data = res.json()
-                # Ensure the answer is a string
                 raw_answer = res_data.get("answer", "No answer received.")
                 answer = raw_answer.get("answer") if isinstance(raw_answer, dict) else raw_answer
                 sources = raw_answer.get("sources", [])
-                
-                st.markdown("### Answer")
-                render_markdown_with_mathjax(answer)
 
-                st.markdown("### Sources")
-                if sources:
-                    for src in sources:
-                        st.markdown(
-                            f"""
-                        - **File Name:** {src.get('filename', '')}
-                            - **Page Number:** {src.get('page number', '')}
-                            - **Relevant Content:** {src.get('page content', '')}
-                        """
-                        )
-                else:
-                    st.markdown("No sources found.")
+                # Add user and assistant messages to history
+                st.session_state.chat_history.append({
+                    "role": "user",
+                    "content": st.session_state.user_input
+                })
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": answer,
+                    "sources": sources
+                })
+                st.session_state.user_input = ""  # Clear input after sending
+
+                st.rerun()  # Refresh to show new messages
+
             except Exception as e:
-                st.error("❌ Sorry, an error occurred while generating your answer.")
-                st.exception(e)
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": "❌ Sorry, an error occurred while generating your answer.",
+                    "sources": []
+                })
+                st.session_state.user_input = ""
+                st.rerun()
 
 # ---------------- QUIZ MODE ---------------- #
 elif mode == "Quiz":
